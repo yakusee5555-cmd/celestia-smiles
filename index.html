@@ -1948,232 +1948,6 @@ setTimeout(function(){ document.querySelectorAll(".rv:not(.in)").forEach(functio
   var inner=new THREE.Group(); group.add(inner);      /* centered, scaled model */
   var modelH=1, modelW=1, baseY=0, visH=1, loaded=false;
 
-  /* ---------- Floating 3D dental tools around the molar ----------
-     Procedural builds (no model files) in the SAME scene and canvas as
-     the molar, so light, camera and pointer parallax are shared. Drag
-     rotates ONLY the molar group above — the camera never moves, so the
-     tools never swing with it. Each tool is placed from a screen-space
-     (NDC) anchor converted through the camera in layoutTools(), called
-     from fit(), so the layout tracks any viewport. Colours are deep
-     slate steel and saturated brand blue — pale tones render white
-     against this scene's white environment panels (see the materials
-     note below) — and the two "clear" pieces use a plain transparent tint, never
-     transmission (that material class renders blank on a whole family
-     of phone GPUs; it already killed the hero tooth once). Any failure
-     in here must leave the molar and the page untouched. */
-  var tools=[], toolsT0=0, toolsBorn=performance.now(), lastToolT=0;
-  var scrollDriftPx=0, scrollTargetPx=0, ptrNDC={x:9,y:9};
-  var extraRim=new THREE.DirectionalLight(0x9fd2ff,0.85); extraRim.position.set(2.5,-1,-5); scene.add(extraRim);
-  /* Tool materials, third pass — the first two builds were effectively
-     invisible on the white hero, and a local render of the shipped page
-     shows why: the scene's environment is a set of big WHITE panels, so
-     any metal (which shades almost purely by reflection) renders the
-     colour of those panels — white — no matter how much grey is in the
-     albedo, and the pale blue-grey plastic handles blew out the same
-     way under the combined lights + IBL. Toning alone cannot beat a
-     white environment. So the tools now carry their contrast in
-     saturated colour and diffuse shading instead: deep slate steel and
-     graphite titanium with envMapIntensity cut roughly in half (enough
-     reflection left to read as metal, not enough to blow out), handles
-     in solid brand blue with a deep navy-blue grip band, a saturated
-     blue liquid, and a deeper-tinted plain transparent "glass" (still
-     NO transmission anywhere in this scene — that material class
-     renders blank on a whole family of phone GPUs). Silver, white and
-     blue only, per the original brief. */
-  var chromeM=new THREE.MeshStandardMaterial({color:0x54687e,metalness:0.9,roughness:0.42,envMapIntensity:0.55});
-  var mirrorFaceM=new THREE.MeshStandardMaterial({color:0xbcd7f0,metalness:1,roughness:0.12,envMapIntensity:0.85});
-  var titaniumM=new THREE.MeshStandardMaterial({color:0x47545f,metalness:0.9,roughness:0.5,envMapIntensity:0.55});
-  var whiteM=new THREE.MeshPhysicalMaterial({color:0x2f7fe0,metalness:0,roughness:0.38,clearcoat:0.6,clearcoatRoughness:0.3,envMapIntensity:0.5});
-  var blueM=new THREE.MeshPhysicalMaterial({color:0x0f4c9c,metalness:0,roughness:0.35,clearcoat:0.5,clearcoatRoughness:0.3,envMapIntensity:0.6});
-  var ceramicM=new THREE.MeshPhysicalMaterial({color:0xf3eee1,metalness:0,roughness:0.36,clearcoat:0.8,clearcoatRoughness:0.28,envMapIntensity:0.5});
-  var liquidM=new THREE.MeshPhysicalMaterial({color:0x2f8fe8,metalness:0,roughness:0.25,envMapIntensity:0.5});
-  var glassM=new THREE.MeshPhysicalMaterial({color:0x5f9bdd,metalness:0,roughness:0.08,transparent:true,opacity:0.55,clearcoat:1,clearcoatRoughness:0.08,envMapIntensity:0.7,specularIntensity:1,side:THREE.DoubleSide,depthWrite:false});
-  function tcyl(rt,rb,h,mat,seg){ return new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg||24),mat); }
-  function buildMirror(){
-    var g=new THREE.Group();
-    g.add(tcyl(0.04,0.06,2.2,chromeM));                              /* tapered chrome handle */
-    var pivot=new THREE.Group(); pivot.position.y=1.05; pivot.rotation.z=-0.44; g.add(pivot); /* neck bent ~25° */
-    var neck=tcyl(0.014,0.026,0.45,chromeM,10); neck.position.y=0.2; pivot.add(neck);
-    var head=new THREE.Group(); head.position.y=0.46; pivot.add(head);
-    var disc=tcyl(0.25,0.25,0.045,chromeM,32); disc.rotation.x=Math.PI/2; head.add(disc);
-    head.add(new THREE.Mesh(new THREE.TorusGeometry(0.25,0.028,10,36),chromeM));
-    var face=new THREE.Mesh(new THREE.CircleGeometry(0.225,32),mirrorFaceM); face.position.z=0.026; head.add(face);
-    return g;
-  }
-  function hookTube(pts,r){
-    var v=pts.map(function(p){ return new THREE.Vector3(p[0],p[1],p[2]); });
-    return new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(v),20,r,8),chromeM);
-  }
-  function buildProbe(){
-    var g=new THREE.Group();
-    g.add(tcyl(0.055,0.075,1.7,whiteM));                             /* slim handle */
-    var band=tcyl(0.082,0.082,0.5,blueM); band.position.y=0.1; g.add(band);   /* blue grip band */
-    var shaft=tcyl(0.012,0.03,0.5,chromeM,10); shaft.position.y=1.05; g.add(shaft);
-    g.add(hookTube([[0,1.26,0],[0,1.48,0.02],[0.05,1.6,0.05],[0.14,1.64,0.08],[0.2,1.57,0.1]],0.011)); /* curved hook tip */
-    var cap=tcyl(0.05,0.07,0.18,blueM); cap.position.y=-0.94; g.add(cap);
-    return g;
-  }
-  function buildScaler(){
-    var g=new THREE.Group();
-    g.add(tcyl(0.06,0.08,1.7,whiteM));
-    var band=tcyl(0.087,0.087,0.34,blueM); band.position.y=-0.25; g.add(band);
-    var shaft=tcyl(0.012,0.028,0.45,chromeM,10); shaft.position.y=1.05; g.add(shaft);
-    g.add(hookTube([[0,1.24,0],[0.02,1.44,0],[0.1,1.57,0],[0.22,1.59,0],[0.3,1.5,0]],0.013));
-    var cap=tcyl(0.055,0.075,0.18,blueM); cap.position.y=-0.94; g.add(cap);
-    return g;
-  }
-  function buildSyringe(){
-    var g=new THREE.Group();
-    g.add(tcyl(0.16,0.16,1.25,glassM,28));                           /* transparent barrel */
-    var liquid=tcyl(0.135,0.135,0.8,liquidM,20); liquid.position.y=-0.15; g.add(liquid); /* light blue fill */
-    var rod=tcyl(0.035,0.035,0.55,chromeM,10); rod.position.y=0.9; g.add(rod);
-    var thumb=tcyl(0.15,0.15,0.05,whiteM); thumb.position.y=1.2; g.add(thumb);  /* thumb disc */
-    [-1,1].forEach(function(s){                                     /* finger flanges */
-      var fl=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.05,0.14),whiteM);
-      fl.position.set(0.31*s,0.66,0); g.add(fl);
-    });
-    var hub=tcyl(0.02,0.07,0.16,blueM,12); hub.position.y=-0.7; g.add(hub);
-    var needle=tcyl(0.006,0.012,0.55,chromeM,8); needle.position.y=-1.05; g.add(needle);
-    return g;
-  }
-  function buildAligner(){
-    var g=new THREE.Group();
-    var band=new THREE.Mesh(new THREE.TorusGeometry(0.85,0.17,14,48,4.2),glassM); /* C-shaped clear band */
-    band.scale.set(1.15,0.62,0.5);                                   /* flattened + widened */
-    band.rotation.z=-0.53;                                           /* arc centred at the top */
-    g.add(band);
-    return g;
-  }
-  function buildImplant(){
-    var g=new THREE.Group(), pts=[], i, t, r;
-    for(i=0;i<=40;i++){                                              /* lathe screw, sine-wave thread */
-      t=i/40;
-      r=0.03+0.11*Math.pow(t,0.7)+Math.sin(t*Math.PI*16)*0.018*t;
-      pts.push(new THREE.Vector2(Math.max(r,0.012),-0.75+1.15*t));
-    }
-    pts.push(new THREE.Vector2(0.001,0.42));
-    g.add(new THREE.Mesh(new THREE.LatheGeometry(pts,36),titaniumM));
-    var ab=tcyl(0.085,0.12,0.24,titaniumM); ab.position.y=0.52; g.add(ab);      /* abutment */
-    var crown=new THREE.Group();
-    var cp=[[0.001,0.5],[0.2,0.49],[0.3,0.44],[0.36,0.33],[0.37,0.2],[0.33,0.08],[0.24,0.0]].map(function(p){ return new THREE.Vector2(p[0],p[1]); });
-    var cm=new THREE.Mesh(new THREE.LatheGeometry(cp,32),ceramicM); cm.scale.set(1,1,0.88); crown.add(cm);
-    [[-0.16,0.13],[0.16,0.13],[-0.16,-0.13],[0.16,-0.13]].forEach(function(c){
-      var s=new THREE.Mesh(new THREE.SphereGeometry(0.13,16,12),ceramicM);
-      s.scale.set(1,0.55,0.88); s.position.set(c[0],0.47,c[1]); crown.add(s);
-    });
-    crown.position.y=0.62; g.add(crown);                             /* white ceramic crown */
-    return g;
-  }
-  /* anchors are NDC (x,y); z is world depth; hf = tool height as a
-     fraction of the visible height (the molar is ~0.55) */
-  var toolDefs=[
-    {build:buildMirror, ax:-0.32, ay:0.38, z:-1.5, hf:0.50, rotZ:-0.55, rotX:0.15, rotY:0.2, phase:0.0, mobile:true, mAx:-0.60, mAy:0.30, mHf:0.52, mRotZ:0.5},
-    {build:buildSyringe, ax:0.38, ay:0.50, z:-3.0, hf:0.46, rotZ:0.5, rotX:-0.1, rotY:-0.3, phase:1.7, mobile:true, mAx:0.62, mAy:0.30, mHf:0.56},
-    {build:buildProbe, ax:0.46, ay:-0.05, z:0.5, hf:0.44, rotZ:0.35, rotX:0.1, rotY:-0.2, phase:3.1, mobile:false},
-    {build:buildAligner, ax:0.30, ay:-0.42, z:1.2, hf:0.30, rotZ:0.15, rotX:-0.55, rotY:0.1, phase:4.4, mobile:false},
-    {build:buildImplant, ax:-0.28, ay:-0.40, z:-0.5, hf:0.40, rotZ:0.1, rotX:0.08, rotY:0, phase:5.6, spin:true, mobile:true, mAx:-0.60, mAy:-0.36, mHf:0.48},
-    {build:buildScaler, ax:-0.52, ay:0.02, z:-2.5, hf:0.44, rotZ:-0.4, rotX:0.12, rotY:0.25, phase:2.4, mobile:false}
-  ];
-  try{
-    toolDefs.forEach(function(d,i){
-      var obj=d.build();
-      var box=new THREE.Box3().setFromObject(obj);
-      var sz=box.getSize(new THREE.Vector3()), ctr=box.getCenter(new THREE.Vector3());
-      obj.position.set(-ctr.x,-ctr.y,-ctr.z);                        /* geometry centred on the holder origin */
-      var spinG=new THREE.Group(); spinG.add(obj);
-      var holder=new THREE.Group(); holder.add(spinG);
-      holder.visible=false;
-      scene.add(holder);
-      tools.push({def:d,holder:holder,spinG:spinG,rawH:Math.max(sz.y,0.001),
-        base:new THREE.Vector3(),repel:{x:0,y:0},delay:i*0.14,depthK:(d.z+4)/6,
-        nx:d.ax,ny:d.ay,scaleT:1,enabled:true});
-    });
-  }catch(e){ tools=[]; }
-  /* NDC anchor -> world position at the tool's depth, through the camera */
-  function layoutTools(){
-    if(!tools.length) return;
-    var mobile=window.innerWidth<=767;
-    for(var i=0;i<tools.length;i++){
-      var tl=tools[i], d=tl.def;
-      tl.enabled=!mobile||d.mobile;
-      if(!tl.enabled){ tl.holder.visible=false; continue; }
-      tl.nx=mobile?d.mAx:d.ax; tl.ny=mobile?d.mAy:d.ay;
-      tl.rotZ=(mobile&&typeof d.mRotZ!=="undefined")?d.mRotZ:d.rotZ;  /* phone override: lean the tool's head away from the molar, which fills most of the small slot */
-      var dist=camera.position.z-d.z;
-      var hAtZ=2*Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*dist;
-      var wAtZ=hAtZ*camera.aspect;
-      tl.base.set(tl.nx*wAtZ/2, tl.ny*hAtZ/2, d.z);
-      tl.scaleT=((mobile?d.mHf:d.hf)*visH)/tl.rawH*(mobile?0.85:1);
-    }
-  }
-  function easeOutBack(x){ var c=1.70158, u=x-1; return 1+(c+1)*u*u*u+c*u*u; }
-  if(finePointer){
-    hero.addEventListener("pointermove",function(e){
-      var r=wrap.getBoundingClientRect();
-      if(!r.width) return;
-      ptrNDC.x=((e.clientX-r.left)/r.width)*2-1;
-      ptrNDC.y=-(((e.clientY-r.top)/r.height)*2-1);
-    });
-    hero.addEventListener("pointerleave",function(){ ptrNDC.x=9; ptrNDC.y=9; });
-  }
-  window.addEventListener("scroll",function(){
-    var r=hero.getBoundingClientRect();
-    scrollTargetPx=Math.max(-600,Math.min(600,-r.top));
-  },{passive:true});
-  window.addEventListener("pagehide",function(){
-    try{
-      tools.forEach(function(tl){
-        tl.holder.traverse(function(o){
-          if(o.geometry) o.geometry.dispose();
-          if(o.material) o.material.dispose();
-        });
-      });
-    }catch(e){}
-  });
-  function updateTools(now){
-    if(!tools.length) return;
-    if(!toolsT0){
-      if(loaded||now-toolsBorn>3500) toolsT0=now;                    /* fly in once the molar is in (or on a timer if it failed) */
-      else return;
-    }
-    var t=(now-toolsT0)/1000;
-    var dt=lastToolT?Math.min(0.05,(now-lastToolT)/1000):0.016; lastToolT=now;
-    scrollDriftPx+=(scrollTargetPx-scrollDriftPx)*0.05;
-    for(var i=0;i<tools.length;i++){
-      var tl=tools[i]; if(!tl.enabled) continue;
-      var d=tl.def;
-      var p=reduced?1:Math.min(1,Math.max(0,(t-tl.delay)/0.9));
-      if(p<=0){ tl.holder.visible=false; continue; }
-      tl.holder.visible=true;
-      var e=easeOutBack(p);
-      var bobY=0, sway=0, swayX=0;
-      if(!reduced){
-        bobY=Math.sin(now*(0.00085+d.phase*0.00007)+d.phase*3)*0.014*visH*e;
-        sway=Math.sin(now*0.0007+d.phase*2)*0.16*e;                  /* gentle sway, well inside ±20° */
-        swayX=Math.sin(now*0.00055+d.phase)*0.1*e;
-      }
-      /* soft repel: pointer near the tool's anchor nudges it away */
-      var rTx=0, rTy=0;
-      if(!reduced&&ptrNDC.x<5){
-        var dx=tl.nx-ptrNDC.x, dy=tl.ny-ptrNDC.y, dist2=Math.sqrt(dx*dx+dy*dy);
-        if(dist2<0.3&&dist2>0.001){
-          var m=(0.3-dist2)*1.5*visH*0.14;
-          rTx=dx/dist2*m; rTy=dy/dist2*m;
-        }
-      }
-      tl.repel.x+=(rTx-tl.repel.x)*0.07; tl.repel.y+=(rTy-tl.repel.y)*0.07;
-      var parAmt=reduced?0:(0.25+tl.depthK*0.9);
-      var sx=tl.base.x*2.6, sy=tl.base.y*2.6+0.4;                    /* entrance starts off-screen, out toward the edges */
-      tl.holder.position.set(
-        sx+(tl.base.x-sx)*e + parX*parAmt + tl.repel.x,
-        sy+(tl.base.y-sy)*e + bobY - parY*parAmt + scrollDriftPx*0.0011*(0.35+tl.depthK) + tl.repel.y,
-        d.z);
-      tl.holder.rotation.set(d.rotX+swayX, d.rotY, (typeof tl.rotZ==="number"?tl.rotZ:d.rotZ)+sway);
-      if(d.spin&&!reduced) tl.spinG.rotation.y+=dt*0.6;              /* only the implant turns on its axis */
-      tl.holder.scale.setScalar(Math.max(0.001,tl.scaleT*(0.3+0.7*e)));
-    }
-  }
-
   function fit(){
     var w=wrap.clientWidth||hero.clientWidth, h=wrap.clientHeight||hero.clientHeight;
     if(!w||!h) return;
@@ -2193,7 +1967,6 @@ setTimeout(function(){ document.querySelectorAll(".rv:not(.in)").forEach(functio
       if(pill){ pill.style.top=""; }
     }
     group.position.y=baseY;
-    layoutTools();
   }
 
   var loader=new THREE.GLTFLoader();
@@ -2287,7 +2060,6 @@ setTimeout(function(){ document.querySelectorAll(".rv:not(.in)").forEach(functio
   function loop(now){
     rafId=requestAnimationFrame(loop);
     if(!visible) return;
-    if(!loaded && !toolsT0 && performance.now()-toolsBorn<=3500) return; /* tools may still fly in if the model fetch failed */
     if(!dragging){
       if(Math.abs(vel)>0.0004){ rotY+=vel; vel*=0.94; }            /* inertia (damping) */
       else if(!reduced && now>resumeAt){ rotY+=0.0032; }            /* slow auto-rotate */
@@ -2298,7 +2070,6 @@ setTimeout(function(){ document.querySelectorAll(".rv:not(.in)").forEach(functio
     group.position.y=baseY+floatY;
     group.rotation.y=rotY+parX;
     group.rotation.x=tiltX+parY;
-    try{ updateTools(now); }catch(e){}                               /* tools are an enhancement: never break the molar's loop */
     renderer.render(scene,camera);
   }
   rafId=requestAnimationFrame(loop);
