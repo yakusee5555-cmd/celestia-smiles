@@ -17,7 +17,11 @@
 {"@context":"https://schema.org","@type":"Blog","name":"Celestia Smiles Blog","description":"Honest, practical dental guides from the Celestia Smiles clinic — aligners, implants, veneers and whitening explained, with India pricing.","blogPost":[{"@type":"BlogPosting","headline":"Clear Aligners vs Braces: Which Is Right for You?","url":"#/blog/clear-aligners-vs-braces"},{"@type":"BlogPosting","headline":"Dental Implants in India: Cost, Process and What to Expect","url":"#/blog/dental-implants-cost-process-india"},{"@type":"BlogPosting","headline":"Porcelain Veneers: A Complete Guide to a Natural Smile Makeover","url":"#/blog/porcelain-veneers-guide"},{"@type":"BlogPosting","headline":"Teeth Whitening: What Works, What Doesn't, and How Long It Lasts","url":"#/blog/teeth-whitening-guide"}]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Font stylesheet loads without blocking first paint: a stalled font
+     host must never hold the whole page blank. Text first renders in the
+     system-ui fallback, then swaps to Inter Tight when it arrives. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <style>
 :root{
   --navy:#0A2A6B; --navy2:#0B4FA8; --cardblue:#2C5AA0; --azure:#1E88E5; --sky:#5BB0DB;
@@ -1020,10 +1024,10 @@ dialog::backdrop{background:rgba(5,30,75,.55);-webkit-backdrop-filter:blur(4px);
   </div>
 </div>
 
-<!-- Navigation (menu, booking buttons, page router) runs BEFORE the
-     parser-blocking three.js CDN tags further down. If that CDN is
-     slow or unreachable, the page parser stalls there — the Blog,
-     Doctor and Booking pages must already work by then. -->
+<!-- Navigation (menu, booking buttons, page router) runs in its own
+     early script, ahead of the main content script, so the Blog,
+     Doctor and Booking pages work no matter what happens further
+     down the page. -->
 <script>
 (function(){
 "use strict";
@@ -1167,8 +1171,17 @@ document.querySelectorAll('a[href^="#/"]').forEach(function(a){
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.147.0/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<!-- The three.js libraries are deliberately NOT loaded with parser-blocking
+     CDN tags here. A blocking library tag from a CDN has no timeout: when
+     the host stalls (as jsdelivr repeatedly did on the clinic's phones),
+     the parser freezes at this point and the main script below — which
+     renders the service cards, testimonial stories, calculator results
+     and the booking calendar — never runs, leaving those sections blank
+     and the page stuck "loading". Each 3D module (hero molar, calculator
+     jaw, service panel) instead fetches the libraries itself through its
+     own async ensureLibs loader, which tries several mirror hosts with
+     an 8s timeout per host and falls back to a static poster / message
+     if every host fails. Nothing visual depends on these downloads. -->
 <script>
 (function(){
 "use strict";
