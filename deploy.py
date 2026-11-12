@@ -31,6 +31,16 @@ FILES = [
     "assets/testimonials/implant-after.jpg",
     "assets/testimonials/whitening-before.jpg",
     "assets/testimonials/whitening-after.jpg",
+    # v50+ : the before/after slider loads these .webp paths at runtime
+    # (JS-built URLs the exporter cannot inline) — they must be deployed.
+    "assets/testimonials/aesthetic-before.webp",
+    "assets/testimonials/aesthetic-after.webp",
+    "assets/testimonials/ortho-before.webp",
+    "assets/testimonials/ortho-after.webp",
+    "assets/testimonials/implant-before.webp",
+    "assets/testimonials/implant-after.webp",
+    "assets/testimonials/whitening-before.webp",
+    "assets/testimonials/whitening-after.webp",
 ]
 
 
